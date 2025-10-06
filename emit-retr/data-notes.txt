@@ -1,2 +1,0 @@
-
-Riyadh power plant 9 (see Varon 2024 Fig 1 for coords) -- EMIT_L1B_RAD_001_20230620T102232_2317107_029.nc
