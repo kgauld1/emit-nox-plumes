@@ -3,16 +3,19 @@ CONFIG = {
     'results_folder': '/Volumes/T9/EMIT-NOX/results/EMIT',
 }
 
-
 LOCS = {
-    'ARIZONA-MINE': {
+    'ARIZONA_MINE': {
         'LAT': 33.048083799737455,
         'LON': -109.35166351714791
     },
-    'SLC-MINE': {
+    'SLC_MINE': {
         'LAT': 40.528234085750384,
         'LON': -112.14439046068979
-    }
+    },
+    'RIYADH_PLANT_9': {
+        'LAT': 24.95005929724472, 
+        'LON': 47.065018186187366
+    },
 }
 
 POWER_PLANTS = {
@@ -91,4 +94,9 @@ POWER_PLANTS = {
     "LAT": 39.9239,
     "NOx Mass (short tons)": 3462.936
   }
+}
+
+
+CROSS_SECTIONS = {
+    'NOX': '/Users/kevin/Desktop/Research/emit-nox-plumes/cross_sections/no2c_97.txt'
 }

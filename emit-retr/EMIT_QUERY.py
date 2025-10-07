@@ -8,11 +8,6 @@ from config import CONFIG, POWER_PLANTS, LOCS
 from datetime import timedelta, datetime
 
 
-def get_L1B_granules(lat, lon, starttime, endtime, cloud_cover=(0,90), count=100):
-    
-    return results
-
-
 def download_granules(results, data_folder, fs):
     for rf in results:
         result_urls = rf.data_links()
@@ -105,7 +100,7 @@ if __name__ == "__main__":
         "--download",
         type=lambda x: str(x).lower() in ["true", "1", "yes", "y"],
         default=False,
-        help="Whether to download the data (default: True)"
+        help="Whether to download the data (default: False)"
     )
     
     parser.add_argument(
@@ -124,14 +119,14 @@ if __name__ == "__main__":
     if not ((args.lat and args.lon) or args.loc_name):
         raise Exception("Must specify either lat/lon or a location name")
         
-    if args.loc_name:
+    if args.loc_name in LOCS:
         lon = LOCS[args.loc_name]['LON']
         lat = LOCS[args.loc_name]['LAT']
         loc_name = args.loc_name
     else:
         lon = args.lon
         lat = args.lat
-        loc_name = f"LOC_{lat:0.3f}_{lon:0.3f}"
+        loc_name = args.loc_name if args.loc_name else f"LOC_{lat:0.3f}_{lon:0.3f}"
     
     results = earthaccess.search_data(
             short_name='EMITL1BRAD',
