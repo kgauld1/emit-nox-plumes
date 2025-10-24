@@ -253,44 +253,43 @@ def run_retrieval(fn, bin_size=1):
     print("Found plume mask! Computing DOAS...")
     
     DOAS = run_doas_scene_vertical_striping(emit_windowed, A, names, plume_mask=plume_mask)
-    print("DOAS Retrieval done! Converting to NetCDF...")
+    print("DOAS Retrieval done! Saving...")
     
     # Add DOAS to the NetCDF
-    ds_nox = ds.copy()
-    wl_val = float(ds["wavelengths"].isel(wavelengths=0))  # or a specific value
+#    ds_nox = ds.copy()
+#    wl_val = float(ds["wavelengths"].isel(wavelengths=0))  # or a specific value
     
-    dscd_da = xr.DataArray(
-        DOAS['dSCD'].astype('float32')[..., None],  # -> (downtrack, crosstrack, 1)
-        dims=("downtrack", "crosstrack", "wavelengths"),
-        coords={
-            "downtrack": ds["downtrack"],
-            "crosstrack": ds["crosstrack"],
-            "wavelengths": [wl_val],
-        },
-        name="dSCD",
-        attrs={
-            "long_name": "Differential Slant Column Density (single band)",
-            "units": "molec cm^-2",
-        },
-    )
-    ds_nox = ds_nox.assign(dSCD=dscd_da)
-    return ds_nox
+#    dscd_da = xr.DataArray(
+#        DOAS['dSCD'].astype('float32')[..., None],  # -> (downtrack, crosstrack, 1)
+#        dims=("downtrack", "crosstrack", "wavelengths"),
+#        coords={
+#            "downtrack": ds["downtrack"],
+#            "crosstrack": ds["crosstrack"],
+#            "wavelengths": [wl_val],
+#        },
+#        name="dSCD",
+#        attrs={
+#            "long_name": "Differential Slant Column Density (single band)",
+#            "units": "molec cm^-2",
+#        },
+#    )
+#    ds_nox = ds_nox.assign(dSCD=dscd_da)
+    return DOAS['dSCD']
 
 
 if __name__ == "__main__":
     # imfns = glob.glob(f"{CONFIG['data_folder']}/SPACEX_PAD/*RAD*") ## CHANGE THIS
     # fn = imfns[1]
-    loc_name = "RIYADH_PLANT_9"
-    granule_name = "EMIT_L1B_RAD_001_20250613T114019_2516407_025.nc"
+    loc_name = "New_Madrid_Power_Plant"#"RIYADH_PLANT_9"
+    granule_name = "EMIT_L1B_RAD_001_20240205T160510_2403611_023.nc" #"EMIT_L1B_RAD_001_20250613T114019_2516407_025.nc"
     fn = f"{CONFIG['data_folder']}/{loc_name}/{granule_name}"
-    result_ds = run_retrieval(fn)
-    ortho_ds = ortho_xr(result_ds)
+    result_dSCD = run_retrieval(fn)
 
     save_path = f"{CONFIG['results_folder']}/{loc_name}"
     os.makedirs(save_path, exist_ok=True)
-    ortho_ds.to_netcdf(f"{save_path}/{granule_name}") 
+    np.save(f"{save_path}/{granule_name.split('.')[0]}.npy", result_dSCD)
 
-    print(f"Saved product to {save_path}/{granule_name} !")
+    print(f"Saved product to {save_path}/dSCD_{granule_name.split('.')[0]}.npy !")
     # plt.figure()
     # plt.imshow(ortho_ds.sel(wavelengths=1500, method='nearest')['radiance'], cmap='gray')
     # plt.imshow(np.array(ortho_ds['dSCD'])[:,:,0]*1e19, alpha=0.5, vmin=-2e17, vmax=2e17, origin='upper', cmap="RdBu_r", aspect='auto')

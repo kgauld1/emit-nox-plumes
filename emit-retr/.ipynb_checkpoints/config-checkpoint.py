@@ -1,6 +1,7 @@
 CONFIG = {
     'data_folder': '/Volumes/T9/EMIT-NOX/data/EMIT',
     'results_folder': '/Volumes/T9/EMIT-NOX/results/EMIT',
+    'plot_folder': '/Volumes/T9/EMIT-NOX/plots/EMIT'
 }
 
 LOCS = {
@@ -24,6 +25,10 @@ LOCS = {
         'LAT': 25.997199872699298, 
         'LON': -97.15631326442413
     },
+    'TURKMENISTAN': {
+        'LAT': 39.39108288758638,
+        'LON': 53.832978540033835
+    }
 }
 
 POWER_PLANTS = {
@@ -101,6 +106,10 @@ POWER_PLANTS = {
     "LON": -87.4272,
     "LAT": 39.9239,
     "NOx Mass (short tons)": 3462.936
+  },
+  "Bridger": {
+    "LON": -108.7854759,
+    "LAT": 41.73797353497696
   }
 }
 

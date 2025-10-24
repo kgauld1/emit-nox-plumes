@@ -31,8 +31,9 @@ def main():
     
     print(top)
     # Build dictionary with underscores in facility names
+#    print(row.keys())s
     result = {
-        row["Facility Name_x"].replace(" ", "_"): {"LON": row["Longitude"], "LAT": row["Latitude"], "NOx Mass (short tons)": row["NOx Mass (short tons)"]}
+        row["Facility Name_x"].replace(" ", "_"): {"LON": row["Longitude"], "LAT": row["Latitude"], "NOx Mass (short tons)": row["NOx Mass (short tons)"], "State": row["State_x"]}
         for _, row in top.iterrows()
     }
 
