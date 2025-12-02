@@ -119,13 +119,13 @@ def plot_plume_dSCD(ds, esri=True):
         x='longitude', y='latitude',  # use the 2D coords
         geo=True, tiles='ESRI' if esri else None,
         cmap='inferno', clim=(vmin, vmax),
-        alpha=0.75, frame_height=650,
+        alpha=0.75 if esri else 1, frame_height=650,
         crs=ccrs.PlateCarree(),      # data are in lon/lat
         title='Plume dSCD (orthorectified) on ESRI satellite' if esri else 'Plume dSCD (orthorectified)'
     )
     return plot
     
-def plot_field_dSCD(ds):
+def plot_field_dSCD(ds, esri=False):
     plume_da = get_plume_xarray(ds, field=True)
     
     finite_vals = plume_da.values[np.isfinite(plume_da.values)]
@@ -133,18 +133,21 @@ def plot_field_dSCD(ds):
     
     plot = plume_da.hvplot.quadmesh(
         x='longitude', y='latitude',  # use the 2D coords
-        geo=True, tiles=None,
+        geo=True, tiles='ESRI' if esri else None,
         cmap='RdBu_r', clim=(vmin, vmax),
-        alpha=0.75, frame_height=650,
+        alpha=0.5 if esri else 1, frame_height=650,
         crs=ccrs.PlateCarree(),      # data are in lon/lat
         title='Field dSCD (orthorectified)'
     )
     return plot
 
 
+
 if __name__ == "__main__":
     loc_name = "New_Madrid_Power_Plant"
     granule_name = "EMIT_L1B_RAD_001_20241012T201651_2428613_043"
+#    loc_name = "Intermountain"
+#    granule_name = "EMIT_L1B_RAD_001_20241001T191716_2427513_010"
 #    fn = f"{CONFIG['results_folder']}/{loc_name}/{granule_name}"
 #    loc_name = 'Bridger'
 #    granule_name = 'EMIT_L1B_RAD_001_20230206T180234_2303712_009'
@@ -181,7 +184,7 @@ if __name__ == "__main__":
     esri = True
     
     if plot_type == 'field':
-        plot = plot_field_dSCD(ds)
+        plot = plot_field_dSCD(ds, esri=esri)
     elif plot_type == 'plume':
         plot = plot_plume_dSCD(ds, esri=esri)
     else:

@@ -14,10 +14,12 @@ import sys
 import argparse
 import glob
 
+from skimage.restoration import denoise_tv_chambolle, inpaint_biharmonic
+
 sys.path.append('../EMIT-Data-Resources/python/modules/')
 from emit_tools import emit_xarray, ortho_xr
 
-def get_plot(loc_name, loc_tick=False):
+def get_plot(loc_name, loc_tick=False, tv_filter=False):
     fns = glob.glob(f'{CONFIG["results_folder"]}/{loc_name}/*.npy')
     if loc_tick:
         if loc_name in LOCS.keys():
@@ -38,7 +40,11 @@ def get_plot(loc_name, loc_tick=False):
         gn_unmask = fns[i].split('/')[-1]
         radfn = f"{CONFIG['data_folder']}/{loc_name}/{gn_unmask[5:-4]}.nc"
         
-        ds_no_orth = emit_xarray(radfn)
+        try:
+            ds_no_orth = emit_xarray(radfn)
+        except:
+            continue
+            
         wl_val = float(ds_no_orth["wavelengths"].isel(wavelengths=0))  # or a specific value
         dscd_da = xr.DataArray(
             dSCD.astype('float32')[..., None],  # -> (downtrack, crosstrack, 1)
@@ -67,8 +73,19 @@ def get_plot(loc_name, loc_tick=False):
         rad1500 = ds['radiance'].sel(wavelengths=1500, method='nearest').values
         dSCD_nan = np.where(rad1500 <= -8000, np.nan, ds['dSCD'].values[:,:,0])
         
-        axs[i].imshow(dSCD_nan*1e19, cmap='RdBu_r', origin='upper', 
-                      aspect='auto', vmin=-2e17, vmax=2e17, extent=bounds, alpha=0.7)
+        if not tv_filter:
+            axs[i].imshow(dSCD_nan*1e19, cmap='RdBu_r', origin='upper',
+                          aspect='auto', vmin=-2e17, vmax=2e17, extent=bounds)
+            
+        else:
+            mask = np.isfinite(dSCD_nan)
+            filled = inpaint_biharmonic(dSCD_nan, ~mask)
+            tv = denoise_tv_chambolle(filled, weight=0.2)
+            tv[~mask] = np.nan
+            
+            axs[i].imshow(tv, cmap='RdBu_r', origin='upper',
+                            aspect='auto', extent=bounds)
+        
         axs[i].set_title(fns[i].split('/')[-1][-31:-4])
 
         del ds
@@ -76,11 +93,13 @@ def get_plot(loc_name, loc_tick=False):
         if loc_tick:
             axs[i].scatter([ltlon], [ltlat], marker='x', c='red')
     
+    fnout = f'{loc_name}_dSCD_retrievals'
     if loc_tick:
-        fnout = f'{loc_name}_dSCD_retrievals_wtick.png'
-    else:
-        fnout = f'{loc_name}_dSCD_retrievals.png'
-        
+        fnout += '_wtick'
+    if tv_filter:
+        fnout += '_tv'
+    fnout += '.png'
+    
     fig.suptitle(loc_name, fontsize=24, y=0.92)
     plt.savefig(f"{CONFIG['plot_folder']}/{fnout}")
 
@@ -89,8 +108,9 @@ if __name__ == "__main__":
     parser.add_argument("--loc_name", type=str, required=False, help="Location name")
     parser.add_argument("--run_all", action="store_true", help="Flag for plant mode")
     parser.add_argument("--loc_tick", action="store_true", help="Include location tick")
+    parser.add_argument("--tv", action="store_true", help="Use tv filter")
     args = parser.parse_args()
-    loc_name, loc_tick, run_all = args.loc_name, args.loc_tick, args.run_all
+    loc_name, loc_tick, run_all, tv = args.loc_name, args.loc_tick, args.run_all, args.tv
     
     if run_all:
         folders = glob.glob(f"{CONFIG['results_folder']}/*")
@@ -98,9 +118,9 @@ if __name__ == "__main__":
 
         for ln in loc_names:
             print(f"Starting {ln}")
-            get_plot(ln, loc_tick)
+            get_plot(ln, loc_tick, tv)
             print(f"Done with {ln}")
     else:
         print(f"Starting {loc_name}")
-        get_plot(loc_name, loc_tick)
+        get_plot(loc_name, loc_tick, tv)
         print(f"Done with {loc_name}")

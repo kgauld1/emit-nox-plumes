@@ -26,7 +26,7 @@ from scipy.ndimage import gaussian_filter, binary_erosion, binary_dilation
 from skimage.transform import hough_line, hough_line_peaks
 
 from config import CONFIG, POWER_PLANTS, CROSS_SECTIONS, LOCS
-sys.path.append('../EMIT-Data-Resources/python/modules/')
+sys.path.append('../../EMIT-Data-Resources/python/modules/')
 from emit_tools import emit_xarray, ortho_xr
 
 RING = None
@@ -234,8 +234,56 @@ def get_plume_mask(DOAS0):
     
     return 1-plume_mask.astype(np.uint8)
 
-def run_retrieval(fn, bin_size=1):
+def crop_about_loc(ds, clat, clon, km_boundary=None, pix_boundary=None):
+    if km_boundary is None and pix_boundary is None:
+        return np.ones_like(ds['radiance'])
+    
+    lat, lon = ds['lat'], ds['lon']
+    
+    if km_boundary is not None:
+        dlat = (km_boundary/2)/111
+        dlon = (km_boundary/2)/(111*np.cos(np.radians(clat)))
+
+        lat_min = clat - dlat
+        lat_max = clat + dlat
+        lon_min = clon - dlon
+        lon_max = clon + dlon
+
+        mask = (
+            (lat >= lat_min) & (lat <= lat_max) &
+            (lon >= lon_min) & (lon <= lon_max)
+        )
+        
+        ys, xs = np.where(mask)
+        if len(ys) == 0:
+            raise ValueError("No pixels found inside requested box!")
+
+        y0, y1 = ys.min(), ys.max()
+        x0, x1 = xs.min(), xs.max()
+    elif pix_boundary is not None:
+        plat, plot = np.argmin(np.abs(lat-clat)), np.argmin(np.abs(lon-clon))
+        
+        y0, y1 = plat - pix_boundary//2, plat + pix_boundary//2
+        x0, x1 = plon - pix_boundary//2, plon + pix_boundary//2
+
+    Ny, Nx = ds["radiance"].shape[:2]
+        
+    mask = np.zeros((Ny, Nx), dtype=bool)
+    mask[y0:y1+1, x0:x1+1] = True
+
+    # Expand to (Ny, Nx, Nlam)
+    mask3d = mask[..., None]  # shape (Ny, Nx, 1)
+    mask3d = np.broadcast_to(mask3d, ds["radiance"].shape)
+    
+    ds["radiance"] = ds["radiance"].where(mask3d)
+    # ds["radiance"] = ds["radiance"].where(mask)
+
+    return mask
+
+def run_retrieval(fn, clat=None, clon=None, km_boundary=None, pix_boundary=None, bin_size=1):
+    print(f"Starting {fn}...")
     ds = emit_xarray(fn)
+    mask = crop_about_loc(ds, clat=clat, clon=clon, km_boundary=km_boundary, pix_boundary=pix_boundary)
     nox_window, desired_bands = get_NOX_cross_sec(ds)
 
     emit_windowed = ds.sel(wavelengths=desired_bands, method='nearest')
@@ -253,44 +301,27 @@ def run_retrieval(fn, bin_size=1):
     print("Found plume mask! Computing DOAS...")
     
     DOAS = run_doas_scene_vertical_striping(emit_windowed, A, names, plume_mask=plume_mask)
-    print("DOAS Retrieval done! Converting to NetCDF...")
+    print("DOAS Retrieval done!")
+
+    lat, lon = ds['lat'].copy(), ds['lon'].copy()
+    del ds
     
-    # Add DOAS to the NetCDF
-    ds_nox = ds.copy()
-    wl_val = float(ds["wavelengths"].isel(wavelengths=0))  # or a specific value
-    
-    dscd_da = xr.DataArray(
-        DOAS['dSCD'].astype('float32')[..., None],  # -> (downtrack, crosstrack, 1)
-        dims=("downtrack", "crosstrack", "wavelengths"),
-        coords={
-            "downtrack": ds["downtrack"],
-            "crosstrack": ds["crosstrack"],
-            "wavelengths": [wl_val],
-        },
-        name="dSCD",
-        attrs={
-            "long_name": "Differential Slant Column Density (single band)",
-            "units": "molec cm^-2",
-        },
-    )
-    ds_nox = ds_nox.assign(dSCD=dscd_da)
-    return ds_nox
+    return DOAS['dSCD'], lat, lon, mask
 
 
 if __name__ == "__main__":
     # imfns = glob.glob(f"{CONFIG['data_folder']}/SPACEX_PAD/*RAD*") ## CHANGE THIS
     # fn = imfns[1]
-    loc_name = "RIYADH_PLANT_9"
-    granule_name = "EMIT_L1B_RAD_001_20250613T114019_2516407_025.nc"
+    loc_name = "New_Madrid_Power_Plant"#"RIYADH_PLANT_9"
+    granule_name = "EMIT_L1B_RAD_001_20240205T160510_2403611_023.nc" #"EMIT_L1B_RAD_001_20250613T114019_2516407_025.nc"
     fn = f"{CONFIG['data_folder']}/{loc_name}/{granule_name}"
-    result_ds = run_retrieval(fn)
-    ortho_ds = ortho_xr(result_ds)
+    result_dSCD = run_retrieval(fn)
 
     save_path = f"{CONFIG['results_folder']}/{loc_name}"
     os.makedirs(save_path, exist_ok=True)
-    ortho_ds.to_netcdf(f"{save_path}/{granule_name}") 
+    np.save(f"{save_path}/{granule_name.split('.')[0]}.npy", result_dSCD)
 
-    print(f"Saved product to {save_path}/{granule_name} !")
+    print(f"Saved product to {save_path}/dSCD_{granule_name.split('.')[0]}.npy !")
     # plt.figure()
     # plt.imshow(ortho_ds.sel(wavelengths=1500, method='nearest')['radiance'], cmap='gray')
     # plt.imshow(np.array(ortho_ds['dSCD'])[:,:,0]*1e19, alpha=0.5, vmin=-2e17, vmax=2e17, origin='upper', cmap="RdBu_r", aspect='auto')

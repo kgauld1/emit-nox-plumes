@@ -34,7 +34,7 @@ def process_plants(args, fs):
         lon, lat = md['LON'], md['LAT']
         
         results = earthaccess.search_data(
-                short_name='EMITL1BRAD',
+                short_name='EMITL2ARFL',
                 point=(lon, lat),
                 temporal=(args.starttime, args.endtime),
                 cloud_cover=(0, args.cloud_cover),
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     # Required
     parser.add_argument("--lat", type=float, help="Latitude of the location")
     parser.add_argument("--lon", type=float, help="Longitude of the location")
-    parser.add_argument("--loc_name", type=str, help="Location name")\
+    parser.add_argument("--loc_name", type=str, help="Location name")
 
     # Optional
     parser.add_argument(
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cloud_cover",
         type=int,
-        default=90,
+        default=100,
         help="Maximum cloud cover percentage (default: 90)"
     )
     parser.add_argument(
@@ -96,19 +96,10 @@ if __name__ == "__main__":
         default=CONFIG['data_folder'],
         help='Path to data folder (default to config file)'
     )
-    parser.add_argument(
-        "--download",
-        type=lambda x: str(x).lower() in ["true", "1", "yes", "y"],
-        default=False,
-        help="Whether to download the data (default: False)"
-    )
     
-    parser.add_argument(
-        "--grab_all_plants",
-        type=lambda x: str(x).lower() in ["true", "1", "yes", "y"],
-        default=False,
-        help="Whether to use all power plants"
-    )
+    parser.add_argument("--download", action="store_true", help="Flag for data download")
+    parser.add_argument("--grab_all_plants", action="store_true", help="Flag to grab all power plants")
+    parser.add_argument("--L2A", action="store_true", help="Flag to pull L2A instead of L1B (default)")
 
     args = parser.parse_args()
     
@@ -133,7 +124,7 @@ if __name__ == "__main__":
         loc_name = args.loc_name if args.loc_name else f"LOC_{lat:0.3f}_{lon:0.3f}"
     
     results = earthaccess.search_data(
-            short_name='EMITL1BRAD',
+            short_name='EMITL1BRAD' if not args.L2A else 'EMITL2ARFL',
             point=(lon, lat),
             temporal=(args.starttime, args.endtime),
             cloud_cover=(0, args.cloud_cover),

@@ -1,2 +1,5 @@
 data/
 results/
+secrets/
+*.hdf
+emit-retr/amf_compute/modis_brdf/
