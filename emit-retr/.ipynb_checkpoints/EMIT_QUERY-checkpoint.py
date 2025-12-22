@@ -5,6 +5,7 @@ import sys
 import argparse
 
 from config import CONFIG, POWER_PLANTS, LOCS
+from REFERENCE_PLANTS import REFERENCE_PLANTS
 from datetime import timedelta, datetime
 
 
@@ -33,13 +34,76 @@ def process_plants(args, fs):
     for loc_name, md in POWER_PLANTS.items():
         lon, lat = md['LON'], md['LAT']
         
-        results = earthaccess.search_data(
+        if args.L1B:
+            L1B_results = earthaccess.search_data(
                 short_name='EMITL1BRAD',
                 point=(lon, lat),
                 temporal=(args.starttime, args.endtime),
                 cloud_cover=(0, args.cloud_cover),
                 count=args.count
             )
+            print(f"FOUND {len(results)} EMIT L1B GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+        else:
+            L1B_results = []
+
+        if args.L2A:
+            L2A_results = earthaccess.search_data(
+                    short_name='EMITL2ARFL',
+                    point=(lon, lat),
+                    temporal=(args.starttime, args.endtime),
+                    cloud_cover=(0, args.cloud_cover),
+                    count=args.count
+                )
+            print(f"FOUND {len(results)} EMIT L2A GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+        else:
+            L2A_results = []
+        
+        results = L1B_results + L2A_results
+        
+        print(f"FOUND {len(results)} EMIT GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+        if args.download:
+            save_path = f"{args.data_folder}/{loc_name}"
+            os.makedirs(save_path, exist_ok=True)
+            
+            download_granules(results, save_path, fs)
+            print("DONE DOWNLOADING GRANULES")
+
+def process_list_of_plants(args, fs):
+    if not args.download:
+        print("DOWNLOAD NOT REQUESTED.")
+    
+    plantnames = [line.rstrip("\n") for line in open(args.plant_list)]
+
+    for loc_name in plantnames:
+        md = REFERENCE_PLANTS[loc_name]
+
+        lon, lat = md['LON'], md['LAT']
+        
+        if args.L1B:
+            L1B_results = earthaccess.search_data(
+                short_name='EMITL1BRAD',
+                point=(lon, lat),
+                temporal=(args.starttime, args.endtime),
+                cloud_cover=(0, args.cloud_cover),
+                count=args.count
+            )
+            print(f"FOUND {len(L1B_results)} EMIT L1B GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+        else:
+            L1B_results = []
+
+        if args.L2A:
+            L2A_results = earthaccess.search_data(
+                    short_name='EMITL2ARFL',
+                    point=(lon, lat),
+                    temporal=(args.starttime, args.endtime),
+                    cloud_cover=(0, args.cloud_cover),
+                    count=args.count
+                )
+            print(f"FOUND {len(L2A_results)} EMIT L2A GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+        else:
+            L2A_results = []
+    
+        results = L1B_results + L2A_results
         
         print(f"FOUND {len(results)} EMIT GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
         if args.download:
@@ -63,7 +127,7 @@ if __name__ == "__main__":
     # Required
     parser.add_argument("--lat", type=float, help="Latitude of the location")
     parser.add_argument("--lon", type=float, help="Longitude of the location")
-    parser.add_argument("--loc_name", type=str, help="Location name")\
+    parser.add_argument("--loc_name", type=str, help="Location name")
 
     # Optional
     parser.add_argument(
@@ -81,7 +145,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cloud_cover",
         type=int,
-        default=90,
+        default=100,
         help="Maximum cloud cover percentage (default: 90)"
     )
     parser.add_argument(
@@ -96,26 +160,32 @@ if __name__ == "__main__":
         default=CONFIG['data_folder'],
         help='Path to data folder (default to config file)'
     )
-    parser.add_argument(
-        "--download",
-        type=lambda x: str(x).lower() in ["true", "1", "yes", "y"],
-        default=False,
-        help="Whether to download the data (default: False)"
-    )
     
+    parser.add_argument("--download", action="store_true", help="Flag for data download")
+    parser.add_argument("--grab_all_plants", action="store_true", help="Flag to grab all power plants")
+    parser.add_argument("--L2A", action="store_true", help="Flag to pull L2A")
+    parser.add_argument("--L1B", action="store_true", help="Flag to pull L1B")
+
     parser.add_argument(
-        "--grab_all_plants",
-        type=lambda x: str(x).lower() in ["true", "1", "yes", "y"],
-        default=False,
-        help="Whether to use all power plants"
+        "--plant_list",
+        type=str,
+        default="",
+        help='filepath to list of plants to download'
     )
 
     args = parser.parse_args()
     
+    if not args.L2A and not args.L1B:
+        raise Exception("Must specify either --L2A or --L1B")
+
     if args.grab_all_plants:
         process_plants(args, fs)
         quit()
     
+    if args.plant_list:
+        process_list_of_plants(args, fs)
+        quit()
+        
     if not ((args.lat and args.lon) or args.loc_name):
         raise Exception("Must specify either lat/lon or a location name")
         
@@ -132,14 +202,31 @@ if __name__ == "__main__":
         lat = args.lat
         loc_name = args.loc_name if args.loc_name else f"LOC_{lat:0.3f}_{lon:0.3f}"
     
-    results = earthaccess.search_data(
+    if args.L1B:
+        L1B_results = earthaccess.search_data(
             short_name='EMITL1BRAD',
             point=(lon, lat),
             temporal=(args.starttime, args.endtime),
             cloud_cover=(0, args.cloud_cover),
             count=args.count
         )
+        print(f"FOUND {len(L1B_results)} EMIT L1B GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+    else:
+        L1B_results = []
+
+    if args.L2A:
+        L2A_results = earthaccess.search_data(
+                short_name='EMITL2ARFL',
+                point=(lon, lat),
+                temporal=(args.starttime, args.endtime),
+                cloud_cover=(0, args.cloud_cover),
+                count=args.count
+            )
+        print(f"FOUND {len(L2A_results)} EMIT L2A GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
+    else:
+        L2A_results = []
     
+    results = L1B_results + L2A_results
     print(f"FOUND {len(results)} EMIT GRANULES FOR {loc_name} AT {lat:0.3f}, {lon:0.3f}")
     if args.download:
         save_path = f"{args.data_folder}/{loc_name}"

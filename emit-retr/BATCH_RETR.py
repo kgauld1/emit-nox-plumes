@@ -7,7 +7,7 @@ import os
 from config import CONFIG, POWER_PLANTS, CROSS_SECTIONS, LOCS
 
 
-def multipass_retrieval(target_name, samples):
+def time_avg_retrieval(target_name, samples):
     try:
         clat, clon = LOCS[target_name]['LAT'], LOCS[target_name]['LON']
     except:
@@ -50,14 +50,14 @@ def singlepass_retrieval(target_name, fn, save_file=True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--loc_name", type=str, required=True, help="Location name")
-    parser.add_argument("--multipass", action="store_true", help="Flag for plant mode")
+    parser.add_argument("--time_avg", action="store_true", help="Flag for plant mode")
     args = parser.parse_args()
     
     target_name = args.loc_name
     samples = glob.glob(f"{CONFIG['data_folder']}/{target_name}/*_RAD_*.nc")
     
-    if multipass:
-        multipass_retrieval(target_name, samples)
+    if args.time_avg:
+        time_avg_retrieval(target_name, samples)
     else:
         for fn in samples:
             singlepass_retrieval(target_name, fn)

@@ -2,10 +2,8 @@ import earthaccess
 import os
 import warnings
 import csv
-from osgeo import gdal
 import numpy as np
 import math
-import rasterio as rio
 import xarray as xr
 import holoviews as hv
 import hvplot.xarray
@@ -18,8 +16,6 @@ import matplotlib.pyplot as plt
 
 import pandas as pd
 import numpy as np
-import rasterio
-from rasterio.transform import Affine
 from scipy import linalg
 from lxml import etree
 from scipy.ndimage import gaussian_filter, binary_erosion, binary_dilation
@@ -279,6 +275,11 @@ def crop_about_loc(ds, clat, clon, km_boundary=None, pix_boundary=None):
     # ds["radiance"] = ds["radiance"].where(mask)
 
     return mask
+
+def get_mask(fn):
+    mask_fn = fn.replace("L1B_RAD", "L2A_MASK")
+    
+
 
 def run_retrieval(fn, clat=None, clon=None, km_boundary=None, pix_boundary=None, bin_size=1):
     print(f"Starting {fn}...")
