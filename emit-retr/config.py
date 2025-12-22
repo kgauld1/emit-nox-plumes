@@ -1,9 +1,9 @@
 CONFIG = {
-    'data_folder': '/Volumes/T9/EMIT-NOX/data/EMIT',
-    'results_folder': '/Volumes/T9/EMIT-NOX/results/EMIT',
-    'plot_folder': '/Volumes/T9/EMIT-NOX/plots/EMIT',
-    'geosfp': '/Volumes/T9/EMIT-NOX/GEOS_FP',
-    'campd_key': '/Users/kevin/Desktop/Research/emit-nox-plumes/secrets/CAMPD_APIKEY'
+    'data_folder': '/orcd/data/dvaron/001/kgauld/EMIT/data',
+    'results_folder': '/orcd/data/dvaron/001/kgauld/EMIT/results1',
+    'plot_folder': '/orcd/data/dvaron/001/kgauld/EMIT/plots1',
+    'geosfp': '/orcd/data/dvaron/001/kgauld/GEOS-FP',
+    'campd_key': '/orcd/pool/005/dvaron_shared/kgauld/emit-nox-plumes/secrets/CAMPD_APIKEY'
 }
 
 LOCS = {
