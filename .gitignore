@@ -3,3 +3,24 @@ results/
 secrets/
 *.hdf
 emit-retr/amf_compute/modis_brdf/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+
+# Common data/artifacts you probably don't want in Git
+*.nc
+*.npy
+*.npz
+*.tif
+*.tiff
+*.grib2
+
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+

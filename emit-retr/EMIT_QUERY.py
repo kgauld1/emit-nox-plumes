@@ -4,7 +4,7 @@ import sys
 
 import argparse
 
-from config import CONFIG, POWER_PLANTS, LOCS
+from config import CONFIG, LOCS
 from REFERENCE_PLANTS import REFERENCE_PLANTS
 from datetime import timedelta, datetime
 

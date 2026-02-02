@@ -17,12 +17,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from scipy import linalg
-from lxml import etree
 from scipy.ndimage import gaussian_filter, binary_erosion, binary_dilation
 from skimage.transform import hough_line, hough_line_peaks
 
-from config import CONFIG, POWER_PLANTS, CROSS_SECTIONS, LOCS
-sys.path.append('../../EMIT-Data-Resources/python/modules/')
+from config import CONFIG, CROSS_SECTIONS, LOCS
+from REFERENCE_PLANTS import REFERENCE_PLANTS
+
+sys.path.append('../EMIT-Data-Resources/python/modules/')
 from emit_tools import emit_xarray, ortho_xr
 
 RING = None
@@ -276,12 +277,22 @@ def crop_about_loc(ds, clat, clon, km_boundary=None, pix_boundary=None):
 
     return mask
 
-def get_mask(fn):
+def get_envi_mask(fn):
     mask_fn = fn.replace("L1B_RAD", "L2A_MASK")
+    mask_ds = emit_xarray(mask_fn, ortho=False)
+    cloud_mask = mask_ds['mask'].values[...,0]
+    cloud_mask = binary_dilation(cloud_mask, iterations=2)
     
+    cirrus_mask = mask_ds['mask'].values[...,1]
+    water_mask = mask_ds['mask'].values[...,2]
+    sc_mask = mask_ds['mask'].values[...,3]
+    
+    agg_mask = np.clip(cloud_mask+cirrus_mask+water_mask+sc_mask, 0, 1)
+    del mask_ds
+    return 1-agg_mask.astype(np.uint8)
 
 
-def run_retrieval(fn, clat=None, clon=None, km_boundary=None, pix_boundary=None, bin_size=1):
+def run_retrieval(fn, clat=None, clon=None, km_boundary=None, pix_boundary=None, include_mask=False, bin_size=1):
     print(f"Starting {fn}...")
     ds = emit_xarray(fn)
     mask = crop_about_loc(ds, clat=clat, clon=clon, km_boundary=km_boundary, pix_boundary=pix_boundary)
@@ -294,11 +305,18 @@ def run_retrieval(fn, clat=None, clon=None, km_boundary=None, pix_boundary=None,
         emit_windowed, nox_window,
     )
     print("NOX cross section created! Computing DOAS0...")
+    if include_mask:
+        initial_mask = get_envi_mask(fn)
+    else:
+        initial_mask = None
     
-    DOAS0 = run_doas_scene_vertical_striping(emit_windowed, A, names)
+    DOAS0 = run_doas_scene_vertical_striping(emit_windowed, A, names, plume_mask=initial_mask)
     print("Found DOAS0! Computing plume mask...")
     
     plume_mask = get_plume_mask(DOAS0)
+    if include_mask:
+        plume_mask = 1-np.clip(2-plume_mask-initial_mask, 0, 1)
+    
     print("Found plume mask! Computing DOAS...")
     
     DOAS = run_doas_scene_vertical_striping(emit_windowed, A, names, plume_mask=plume_mask)
@@ -306,8 +324,12 @@ def run_retrieval(fn, clat=None, clon=None, km_boundary=None, pix_boundary=None,
 
     lat, lon = ds['lat'].copy(), ds['lon'].copy()
     del ds
-    
-    return DOAS['dSCD'], lat, lon, mask
+
+    if include_mask:
+        doas_out = np.where(1-initial_mask, np.nan, DOAS['dSCD'])
+    else:
+        doas_out = DOAS['dSCD']
+    return doas_out, lat, lon, mask, initial_mask, plume_mask
 
 
 if __name__ == "__main__":
@@ -318,7 +340,7 @@ if __name__ == "__main__":
     fn = f"{CONFIG['data_folder']}/{loc_name}/{granule_name}"
     result_dSCD = run_retrieval(fn)
 
-    save_path = f"{CONFIG['results_folder']}/{loc_name}"
+    save_path = f"{CONFIG['results_folder']}/{CONFIG['retr_subdir']}/{loc_name}"
     os.makedirs(save_path, exist_ok=True)
     np.save(f"{save_path}/{granule_name.split('.')[0]}.npy", result_dSCD)
 
