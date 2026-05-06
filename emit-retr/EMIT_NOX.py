@@ -20,15 +20,15 @@ from scipy import linalg
 from scipy.ndimage import gaussian_filter, binary_erosion, binary_dilation
 from skimage.transform import hough_line, hough_line_peaks
 
-from config import CONFIG, CROSS_SECTIONS, LOCS
+from config import CONFIG, LOCS
 from REFERENCE_PLANTS import REFERENCE_PLANTS
 
 sys.path.append('../EMIT-Data-Resources/python/modules/')
 from emit_tools import emit_xarray, ortho_xr
 
 RING = None
-wav_min = 418
-wav_max = 492
+wav_min = 403#417#405#418
+wav_max = 493#465#492
 polydeg = 3
 
 ####################################################################################################
@@ -91,7 +91,7 @@ def get_NOX_cross_sec(emit_ds):
     # Following TROPOMI NO2 ATBD: https://sentinel.esa.int/documents/247904/2476257/sentinel-5p-tropomi-atbd-no2-data-products
     # Data reference: http://spectrolab.aeronomie.be/no2.htm
     no2_cross_sections = pd.read_csv(
-        CROSS_SECTIONS['NOX'],
+        CONFIG['NOX_CSEC'],
         sep=" ",
         usecols=[3, 4],
         names=["vacuum_wavenumber_cm-1", "cross_section_cm^2/molecule_@220K"],
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     # imfns = glob.glob(f"{CONFIG['data_folder']}/SPACEX_PAD/*RAD*") ## CHANGE THIS
     # fn = imfns[1]
     loc_name = "New_Madrid_Power_Plant"#"RIYADH_PLANT_9"
-    granule_name = "EMIT_L1B_RAD_001_20240205T160510_2403611_023.nc" #"EMIT_L1B_RAD_001_20250613T114019_2516407_025.nc"
+    granule_name = "EMIT_L1B_RAD_001_20250401T172306_2509111_025.nc" #"EMIT_L1B_RAD_001_20250613T114019_2516407_025.nc"
     fn = f"{CONFIG['data_folder']}/{loc_name}/{granule_name}"
     result_dSCD = run_retrieval(fn)
 

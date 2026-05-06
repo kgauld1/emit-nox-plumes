@@ -26,7 +26,7 @@ def get_emission_rate(plant_info, obs_time, lead_time):
 
     # printing the response error message if the response is not successful
     if (int(streamingResponse.status_code) > 399):
-        sys.exit("Error message: "+streamingResponse.json()['error'])
+        sys.exit(f"Error message: {streamingResponse.json()['error']}")
 
     resp_df = pd.DataFrame(streamingResponse.json())
 
@@ -65,7 +65,7 @@ def get_emissions(plant_info, obs_time, lead_time):
 
     # printing the response error message if the response is not successful
     if (int(streamingResponse.status_code) > 399):
-        sys.exit("Error message: "+streamingResponse.json()['error'])
+        sys.exit(f"Error message: {streamingResponse.json()['error']}")
 
     resp_df = pd.DataFrame(streamingResponse.json())
 

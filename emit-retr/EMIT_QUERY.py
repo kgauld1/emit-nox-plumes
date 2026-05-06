@@ -193,9 +193,9 @@ if __name__ == "__main__":
         lon = LOCS[args.loc_name]['LON']
         lat = LOCS[args.loc_name]['LAT']
         loc_name = args.loc_name
-    elif args.loc_name in POWER_PLANTS:
-        lon = POWER_PLANTS[args.loc_name]['LON']
-        lat = POWER_PLANTS[args.loc_name]['LAT']
+    elif args.loc_name in REFERENCE_PLANTS:
+        lon = REFERENCE_PLANTS[args.loc_name]['LON']
+        lat = REFERENCE_PLANTS[args.loc_name]['LAT']
         loc_name = args.loc_name
     else:
         lon = args.lon
@@ -236,3 +236,6 @@ if __name__ == "__main__":
         print("DONE DOWNLOADING GRANULES")
     else:
         print("DOWNLOAD NOT REQUESTED. EXITING.")
+        for l in L1B_results:
+            print(l)
+            print('\n\n\n')

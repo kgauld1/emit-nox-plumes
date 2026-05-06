@@ -1,10 +1,11 @@
 from EMIT_NOX import run_retrieval
+
 import argparse
 import numpy as np
 import glob
 import os, sys
 
-from config import CONFIG, CROSS_SECTIONS, LOCS
+from config import CONFIG, LOCS
 from REFERENCE_PLANTS import REFERENCE_PLANTS
 
 sys.path.append('../datasets/')
@@ -258,15 +259,15 @@ if __name__ == "__main__":
 
     print(f"Running with {args=}")
     samples = glob.glob(f"{CONFIG['data_folder']}/{target_name}/*_RAD_*.nc")
-
+    
     if args.time_avg:
         skip_done=True
-
+    loc_src = REFERENCE_PLANTS if target_name in REFERENCE_PLANTS.keys() else LOCS
     if not args.no_rerun:
         for fn in samples:
             try:
                 singlepass_retrieval(target_name, 
-                                     LOCS, 
+                                     loc_src, 
                                      fn, 
                                      km_boundary=km_boundary, 
                                      skip_done=skip_done, 

@@ -8,6 +8,7 @@ import panel as pn
 import numpy as np
 from scipy import ndimage as ndi
 from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import gaussian_filter
 import sys, os
 import argparse
 import glob
@@ -26,6 +27,147 @@ sys.path.append('../datasets/')
 from get_geosfp import get_geosfp_wind
 from get_hrrr import get_hrrr_wind_10m, get_hrrr_wind_agl
 
+def rgb_stretch(rgb_ds, qlo=2, qhi=98, gamma=2.2, white_background=False):
+    da = rgb_ds["radiance"]  # or "reflectance" if you have it
+    out = []
+    for wl in da["wavelengths"].values:
+        b = da.sel(wavelengths=wl)
+
+        # mask nonpositive / invalid
+        b = b.where(b > 0)
+        lo = b.quantile(qlo/100.0)
+        hi = b.quantile(qhi/100.0)
+
+        b = (b - lo) / (hi - lo)
+        b = b.clip(0, 1)
+
+        # gamma correction (display gamma)
+        b = b ** (1/gamma)
+        if white_background:
+            b = b.fillna(1.0)
+        out.append(b)
+
+    da_out = xr.concat(out, dim="wavelengths")
+    da_out = da_out.assign_coords(wavelengths=da["wavelengths"])
+
+    rgb_ds = rgb_ds.copy()
+    rgb_ds["radiance"] = da_out
+    return rgb_ds
+
+def crop_about_loc(ds, clat, clon, km_boundary=None, pix_boundary=None):
+    if km_boundary is None and pix_boundary is None:
+        return np.ones_like(ds['radiance'])
+    
+    lat, lon = ds['lat'], ds['lon']
+    
+    if km_boundary is not None:
+        dlat = (km_boundary/2)/111
+        dlon = (km_boundary/2)/(111*np.cos(np.radians(clat)))
+
+        lat_min = clat - dlat
+        lat_max = clat + dlat
+        lon_min = clon - dlon
+        lon_max = clon + dlon
+
+        mask = (
+            (lat >= lat_min) & (lat <= lat_max) &
+            (lon >= lon_min) & (lon <= lon_max)
+        )
+        
+        ys, xs = np.where(mask)
+        if len(ys) == 0:
+            raise ValueError("No pixels found inside requested box!")
+
+        y0, y1 = ys.min(), ys.max()
+        x0, x1 = xs.min(), xs.max()
+    elif pix_boundary is not None:
+        plat, plot = np.argmin(np.abs(lat-clat)), np.argmin(np.abs(lon-clon))
+        
+        y0, y1 = plat - pix_boundary//2, plat + pix_boundary//2
+        x0, x1 = plon - pix_boundary//2, plon + pix_boundary//2
+
+    Ny, Nx = ds["radiance"].shape[:2]
+        
+    mask = np.zeros((Ny, Nx), dtype=bool)
+    mask[y0:y1+1, x0:x1+1] = True
+
+    # Expand to (Ny, Nx, Nlam)
+    mask3d = mask[..., None]  # shape (Ny, Nx, 1)
+    mask3d = np.broadcast_to(mask3d, ds["radiance"].shape)
+    
+    ds["radiance"] = ds["radiance"].where(mask3d)
+    # ds["radiance"] = ds["radiance"].where(mask)
+
+    return mask
+
+def get_rgb(loc_name, granule, km_boundary=None, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    fp = f"{CONFIG['data_folder']}/{loc_name}/EMIT_L1B_RAD_001_{granule}.nc"
+    try:
+        lat = REFERENCE_PLANTS[loc_name]['LAT']
+        lon = REFERENCE_PLANTS[loc_name]['LON']
+    except:
+        lat = LOCS[loc_name]['LAT']
+        lon = LOCS[loc_name]['LON']
+    # Load and orthorectify
+    ds_geo = emit_xarray(fp, ortho=False)
+    if km_boundary is not None:
+        mask=crop_about_loc(ds_geo, lat, lon, km_boundary)
+    ds_geo = ortho_xr(ds_geo)
+
+    # Select RGB bands
+    rgb = ds_geo.sel(wavelengths=[700, 529, 470], method="nearest")
+    rgb = rgb_stretch(rgb, qlo=2, qhi=98, gamma=2.2, white_background=True)
+
+    # Crop if bounds provided
+    
+    # Convert to numpy image
+    img = rgb.transpose("latitude","longitude","wavelengths").to_array().values
+    img = np.moveaxis(img, 0, -1).astype(float)
+    img = np.squeeze(img)          # drops any trailing 1-dims
+    img = img[..., :3]             # defensive: ensure 3 channels if something weird
+    extent = [
+        float(rgb.longitude.min()),
+        float(rgb.longitude.max()),
+        float(rgb.latitude.min()),
+        float(rgb.latitude.max()),
+    ]
+
+    ax.imshow(img, extent=extent, origin="upper", aspect="auto")
+
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+
+    return ax
+
+def get_single_granule_rgb(loc_name, granule_name, loc_tick=False, wind_tick=False):
+    fig = plt.figure(figsize=(16,16))
+    ax = plt.gca()
+    get_rgb(loc_name, granule_name, ax=ax)
+    if loc_tick:
+        if loc_name in LOCS.keys():
+            ltlat, ltlon = LOCS[loc_name]['LAT'], LOCS[loc_name]['LON']
+        elif loc_name in REFERENCE_PLANTS.keys():
+            ltlat, ltlon = REFERENCE_PLANTS[loc_name]['LAT'], REFERENCE_PLANTS[loc_name]['LON']
+        else:
+            loc_tick = False
+        ax.scatter([ltlon], [ltlat], marker='x', c='red', s=150)
+    fnout = f'{loc_name}_{granule_name}_rgb'
+    if loc_tick:
+        fnout += '_ltick'
+    fnout += '.png'
+    fig.suptitle(loc_name, fontsize=24, y=0.92)
+    print(f"Saving {fnout}...")
+    
+    os.makedirs(f"{CONFIG['plot_folder']}_rgb", exist_ok=True)
+    os.makedirs(f"{CONFIG['plot_folder']}_rgb/{loc_name}", exist_ok=True)
+    
+    plt.savefig(f"{CONFIG['plot_folder']}_rgb/{loc_name}/{fnout}")
+    plt.close(fig)
+    gc.collect()
+    
 def get_single_granule_plot(dSCD_fn, loc_name, loc_tick=False, wind_tick=False, tv_filter=False, use_ax=None):
     if not use_ax:
         fig = plt.figure(figsize=(16,16))
@@ -102,15 +244,15 @@ def get_single_granule_plot(dSCD_fn, loc_name, loc_tick=False, wind_tick=False, 
         geosfp_info = get_geosfp_wind(ltlat, ltlon, obs_time, cache=f'{CONFIG["geosfp"]}/')
         plot_arrow(float(geosfp_info["DIR50"]), 'blue')
 
-        hrrr_agl_info = get_hrrr_wind_agl(ltlat, ltlon, obs_time, layer=(200,600), cache=f'{CONFIG["hrrr"]}')
-        plot_arrow(float(hrrr_agl_info["dir_from_deg"]), 'red')
+        # hrrr_agl_info = get_hrrr_wind_agl(ltlat, ltlon, obs_time, layer=(200,600), cache=f'{CONFIG["hrrr"]}')
+        # plot_arrow(float(hrrr_agl_info["dir_from_deg"]), 'red')
 
-        hrrr_10m_info = get_hrrr_wind_10m(ltlat, ltlon, obs_time, cache=f'{CONFIG["hrrr"]}')
-        plot_arrow(float(hrrr_10m_info["dir_from_deg"]), 'green')
+        # hrrr_10m_info = get_hrrr_wind_10m(ltlat, ltlon, obs_time, cache=f'{CONFIG["hrrr"]}')
+        # plot_arrow(float(hrrr_10m_info["dir_from_deg"]), 'green')
 
         ax.scatter([],[],c='blue',label=f'geosfp 50m {geosfp_info["U50"]:0.2f}')
-        ax.scatter([],[],c='red',label=f'hrrr agl {hrrr_agl_info["speed_ms"]:0.2f}')
-        ax.scatter([],[],c='green',label=f'hrrr 10m {hrrr_10m_info["speed_ms"]:0.2f}')
+        # ax.scatter([],[],c='red',label=f'hrrr agl {hrrr_agl_info["speed_ms"]:0.2f}')
+        # ax.scatter([],[],c='green',label=f'hrrr 10m {hrrr_10m_info["speed_ms"]:0.2f}')
 
         ax.legend(
             loc="lower left",
@@ -132,9 +274,21 @@ def get_single_granule_plot(dSCD_fn, loc_name, loc_tick=False, wind_tick=False, 
         filled = dSCD_nan[tuple(idx)]   # copies nearest valid value into each NaN pixel
         tv = denoise_tv_chambolle(filled, weight=0.2)
         tv[~mask] = np.nan
+
+        vmax = np.nanpercentile(tv,99.7)
         
-        ax.imshow(tv, cmap='RdBu_r', origin='upper',
+        # ax.imshow(tv, cmap='RdBu_r', origin='upper',
+        #           vmin=-vmax, vmax=vmax,
+        #                 aspect='auto', extent=bounds)
+        im = ax.imshow(tv, cmap='YlOrRd', origin='upper',
+                  vmin=0, vmax=vmax,
                         aspect='auto', extent=bounds)
+        # Z_s   = ndi.gaussian_filter(dSCD_nan, sigma=1.5)
+        # im=ax.imshow(Z_s, cmap='YlOrRd', origin='upper', 
+        #           vmin=0, vmax=np.nanpercentile(Z_s, 98), 
+        #           aspect='auto', extent=bounds)
+        plt.colorbar(im, ax=ax)
+
     
     ax.set_title(granule_name)
     
@@ -170,7 +324,7 @@ def get_single_granule_plot(dSCD_fn, loc_name, loc_tick=False, wind_tick=False, 
         plt.close(fig)
         gc.collect()
 
-def get_plot(loc_name, loc_tick=False, wind_tick=False, tv_filter=False, combine_plot=False):
+def get_plot(loc_name, loc_tick=False, wind_tick=False, tv_filter=False, combine_plot=False, rgb=False):
     fns = glob.glob(f"{CONFIG['results_folder']}/{CONFIG['retr_subdir']}/{loc_name}/*.npy")
     
     if combine_plot:
@@ -191,6 +345,11 @@ def get_plot(loc_name, loc_tick=False, wind_tick=False, tv_filter=False, combine
         
         fig.suptitle(loc_name, fontsize=24, y=0.92)
         plt.savefig(f"{CONFIG['plot_folder']}/{loc_name}/{fnout}")
+    elif rgb:
+        for i in range(len(fns)):
+            gn_unmask = fns[i].split('/')[-1]
+            granule_name = gn_unmask[-31:-4]
+            get_single_granule_rgb(loc_name, granule_name, loc_tick=loc_tick)
     else:
         for i in range(len(fns)):
             get_single_granule_plot(fns[i], loc_name, loc_tick=loc_tick, wind_tick=wind_tick, tv_filter=tv_filter, use_ax=None)
@@ -239,6 +398,7 @@ if __name__ == "__main__":
     parser.add_argument("--combine_plot", action="store_true", help="Combine all location plots")
     parser.add_argument("--tv", action="store_true", help="Use tv filter")
     parser.add_argument("--tavg", action="store_true", help="Use time avg")
+    parser.add_argument("--rgb", action="store_true")
     args = parser.parse_args()
 
     if args.tavg:
@@ -261,11 +421,13 @@ if __name__ == "__main__":
 
         for ln in loc_names:
             print(f"Starting {ln}")
-            os.makedirs(f"{CONFIG['plot_folder']}/{ln}/", exist_ok=True)
-            get_plot(ln, args.loc_tick, args.wind_tick, args.tv, args.combine_plot)
+            if not args.rgb:
+                os.makedirs(f"{CONFIG['plot_folder']}/{ln}/", exist_ok=True)
+            get_plot(ln, args.loc_tick, args.wind_tick, args.tv, args.combine_plot, args.rgb)
             print(f"Done with {ln}")
     else:
         print(f"Starting {args.loc_name}")
-        os.makedirs(f"{CONFIG['plot_folder']}/{args.loc_name}/", exist_ok=True)
-        get_plot(args.loc_name, args.loc_tick, args.wind_tick, args.tv, args.combine_plot)
+        if not args.rgb:
+            os.makedirs(f"{CONFIG['plot_folder']}/{args.loc_name}/", exist_ok=True)
+        get_plot(args.loc_name, args.loc_tick, args.wind_tick, args.tv, args.combine_plot, args.rgb)
         print(f"Done with {args.loc_name}")

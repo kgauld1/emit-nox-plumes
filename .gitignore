@@ -24,3 +24,9 @@ __pycache__/
 __pycache__/
 *.pyc
 
+emit-retr/testing_notebooks/class_data
+emit-retr/testing_notebooks/jobs
+emit-retr/testing_notebooks/outputs-old
+emit-retr/testing_notebooks/PAPER-FIGS
+emit-retr/testing_notebooks/PLOT_DATA
+emit-retr/testing_notebooks/SourceRate_INIT

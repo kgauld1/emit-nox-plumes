@@ -110,6 +110,11 @@ def get_geosfp_wind(lat, lon, date_time, cache="./../dat/_geosfp/"):
         np.mean(PS.sel(time=new_time_str, lon=lon, lat=lat, method="nearest").values)
     )
 
+    T2M = geos_data.T2M
+    T2M_nearest = float(
+        np.mean(T2M.sel(time=new_time_str, lon=lon, lat=lat, method="nearest").values)
+    )
+
     # Use a janky version of the log-law for wind to get U200 -- TODO
     # Assumes stable conditions, which is wrong -- need stability correction
     # z0 = 0.1  # assumed roughness height
@@ -159,6 +164,8 @@ def get_geosfp_wind(lat, lon, date_time, cache="./../dat/_geosfp/"):
 
     # Wind dictionary
     wind_dict = {}
+    wind_dict['PS'] = PS_nearest/100 # get to hPA
+    wind_dict['T2M'] = T2M_nearest
     wind_dict["U2"] = U2_nearest
     wind_dict["DIR2"] = DIR2_nearest
     wind_dict["U10"] = U10_nearest
@@ -227,3 +234,164 @@ def get_geosfp_tph(lat, lon, date_time, elevation, cache="./../dat/_geosfp/"):
         'H': np.array(Hx)
     }
     return tph
+
+from datetime import timedelta
+import subprocess
+
+def nearest_geosfp_time(dt):
+    """
+    Return the strictly closest GEOS-FP 3D timestamp.
+    Valid times each day are:
+    01:30, 04:30, 07:30, 10:30, 13:30, 16:30, 19:30, 22:30
+    """
+    # Shift so that valid times become multiples of 3 hours from midnight
+    shifted = dt - timedelta(hours=1, minutes=30)
+
+    # Convert to seconds since an arbitrary reference
+    day_start = shifted.replace(hour=0, minute=0, second=0, microsecond=0)
+    seconds = (shifted - day_start).total_seconds()
+
+    step = 3 * 3600  # 3 hours
+    nearest_step = round(seconds / step)
+
+    nearest = day_start + timedelta(seconds=nearest_step * step)
+    nearest += timedelta(hours=1, minutes=30)
+
+    return nearest.replace(second=0, microsecond=0)
+
+
+def download_geosfp_3d(date_time, cache="./../dat/_geosfp/"):
+    os.makedirs(cache, exist_ok=True)
+
+    # Try nearest valid time first, then immediate neighbors if needed
+    center = nearest_geosfp_time(date_time)
+    candidates = [
+        center,
+        # center - timedelta(hours=3),
+        # center + timedelta(hours=3),
+    ]
+
+    TREE = "https://portal.nccs.nasa.gov/datashare/gmao/geos-fp/das"
+    NAME = "GEOS.fp.asm.tavg3_3d_asm_Nv."
+
+    for dt in candidates:
+        y = dt.year
+        m = f"{dt.month:02d}"
+        d = f"{dt.day:02d}"
+        hh = f"{dt.hour:02d}"
+        tstr = f"{hh}30"
+
+        fname = f"{NAME}{y}{m}{d}_{tstr}.V01.nc4"
+        url = f"{TREE}/Y{y}/M{m}/D{d}/{fname}"
+        out = f"{cache}/{fname}"
+
+        if os.path.exists(out) and os.path.getsize(out) > 5e6:
+            return out, dt
+
+        subprocess.run(
+            ["wget", "--quiet", "--timeout=20", "--tries=2", "-O", out, url],
+            check=False,
+        )
+
+        if os.path.exists(out) and os.path.getsize(out) > 1_000_000_000:
+            logging.info(f"Using GEOS-FP 3D at {dt.isoformat()} UTC")
+            return out, dt
+
+        if os.path.exists(out):
+            os.remove(out)
+
+    raise RuntimeError(
+        f"No valid GEOS-FP 3D file found near {date_time.isoformat()} UTC"
+    )
+
+def get_geosfp_wind_agl(
+    lat, lon, date_time,
+    z_agl=400,
+    layer=None,
+    cache="./../dat/_geosfp/"
+):
+    """
+    GEOS-FP wind at target height above ground or layer-mean wind
+    using 3-D pressure-level meteorology.
+
+    Parameters
+    ----------
+    z_agl : float
+        Target height AGL in meters.
+    layer : tuple(float, float) or None
+        If provided, compute layer-mean wind between (z0, z1) meters AGL.
+
+    Returns
+    -------
+    dict with speed_ms, dir_from_deg, u_ms, v_ms, z_used_m_agl
+    """
+
+    # --- download & open 3D file ---
+    geos_pth = download_geosfp_3d(date_time, cache=cache)[0]
+    ds = xr.load_dataset(geos_pth, engine="netcdf4")
+
+    tstr = f"{date_time.year}-{zero_pad_number(date_time.month)}-" \
+           f"{zero_pad_number(date_time.day)}T" \
+           f"{zero_pad_number(date_time.hour)}:30:00"
+
+    # --- select nearest grid point ---
+    U = ds["U"].sel(time=tstr, lat=lat, lon=lon, method="nearest")
+    V = ds["V"].sel(time=tstr, lat=lat, lon=lon, method="nearest")
+    H = ds["H"].sel(time=tstr, lat=lat, lon=lon, method="nearest")
+
+    u_prof = U.values.astype(float)
+    v_prof = V.values.astype(float)
+    z_msl  = H.values.astype(float)
+    
+    terrain_msl = float(
+        ds.PHIS.sel(time=tstr, lat=lat, lon=lon, method="nearest").values
+    ) / 9.80665
+
+    # --- convert to AGL ---
+    z_agl_levels = z_msl - terrain_msl
+
+    # sort by height
+    order = np.argsort(z_agl_levels)
+    z_agl_levels = z_agl_levels[order]
+    u_prof = u_prof[order]
+    v_prof = v_prof[order]
+
+    def interp_uv(z_target):
+        if z_target <= z_agl_levels.min():
+            k = np.argmin(np.abs(z_agl_levels - z_target))
+            return u_prof[k], v_prof[k], z_agl_levels[k]
+        if z_target >= z_agl_levels.max():
+            k = np.argmin(np.abs(z_agl_levels - z_target))
+            return u_prof[k], v_prof[k], z_agl_levels[k]
+        u = np.interp(z_target, z_agl_levels, u_prof)
+        v = np.interp(z_target, z_agl_levels, v_prof)
+        return u, v, z_target
+
+    # --- single height or layer mean ---
+    if layer is not None:
+        z0, z1 = layer
+        zs = np.linspace(z0, z1, 9)
+        us, vs = [], []
+        for zz in zs:
+            uu, vv, _ = interp_uv(zz)
+            us.append(uu)
+            vs.append(vv)
+        u = float(np.mean(us))
+        v = float(np.mean(vs))
+        z_used = 0.5 * (z0 + z1)
+    else:
+        u, v, z_used = interp_uv(z_agl)
+
+    speed = float(np.hypot(u, v))
+    wdir = float((np.degrees(np.arctan2(-u, -v)) + 360.0) % 360.0)
+
+    return {
+        "speed_ms": speed,
+        "dir_from_deg": wdir,
+        "u_ms": float(u),
+        "v_ms": float(v),
+        "z_used_m_agl": float(z_used),
+        "terrain_m_msl": float(terrain_msl),
+        "levels_z_agl_m": z_agl_levels.tolist(),
+        "geosfp_3d_path": geos_pth,
+    }
