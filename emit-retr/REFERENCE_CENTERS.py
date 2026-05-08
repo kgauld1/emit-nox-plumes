@@ -71,6 +71,12 @@ REFERENCE_CENTERS = {
         'LAT': 34.995980969077756, 
         'LON': -90.0349839490304,
     },
+    'XAI_POWER_PLANT': {
+        'OPERATOR': 'xAI',
+        'OP_DATE': '2025-10-19',
+        'LAT': 34.9809316261756,
+        'LON': -90.03976114417924
+    },
     'Microsoft_Fairwater_WI': {
         'OPERATOR': 'Microsoft',
         'OP_DATE': '2026-03-31',
